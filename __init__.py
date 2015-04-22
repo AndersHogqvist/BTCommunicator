@@ -30,6 +30,11 @@ from kivy.clock import mainthread
 from kivy.uix.widget import Widget
 from kivy import platform
 
+class BTCommunicatorException(Exception):
+    '''Exception for the :class:`BTCommunicator`.
+    '''
+    pass
+
 class BTCommunicator(Widget):
     '''
     :Events:
@@ -48,11 +53,15 @@ class BTCommunicator(Widget):
             responses from the Arduino deviec is enclosed in '<' and '>'. Change this with
             :class:`BTCommunicator.set_enclosing(start=character, end=character)`
 
-        `on_error`:
-            Fired when a new error message is available.
-
         `on_unknown`: ()
             Fired if the response == :attr:`unknown`. The command will be removed from :attr:`command_buffer`.
+    '''
+
+    is_connected = BooleanProperty(False)
+    '''
+    Is true if we are connected.
+
+    .. versionadded:: 0.0.1
     '''
 
     start_enclosing = StringProperty('<')
@@ -112,14 +121,6 @@ class BTCommunicator(Widget):
     .. versionadded:: 0.0.1
     '''
 
-    error_message = StringProperty('')
-    '''
-    Last error message from an exception raised while communicating with the BT device.
-    Will dispatch the :meth:`BTCommunicator.on_error` event if changed.
-
-    .. versionadded:: 0.0.1
-    '''
-
     #===========================================================================
     # privates
     #===========================================================================
@@ -156,22 +157,42 @@ class BTCommunicator(Widget):
         try:
             self._get_socket_stream(self._device_name)
         except AttributeError as e:
-            self._error_message = "Det gick inte att ansluta till styrenheten. Felmeddelande: {}".format(e.message)
-            return
-        except jnius.JavaException as e:
-            self._error_message = "Det gick inte att ansluta till styrenheten. Är Blåtand aktiverat?"
-            return
+            self._exception_raiser("Det gick inte att ansluta till styrenheten. Felmeddelande: {}".format(e.message))
+            return False
+        except jnius.JavaException:
+            self._exception_raiser("Det gick inte att ansluta till styrenheten. Är Blåtand aktiverat?")
+            return False
         except:
-            self._error_message = "Det gick inte att ansluta till styrenheten. Felmeddelande: {}".format(sys.exc_info()[0])
-            return
-        self.dispatch('on_connected')
+            self._exception_raiser("Det gick inte att ansluta till styrenheten. Felmeddelande: {}".format(sys.exc_info()[0]))
+            return False
+        self.is_connected = True
         if self.send_reset:
             self.send(command=self.reset_command)
-        return
+        return True
     '''
     Connects to the device with the name :attr:`device_name`
-    Will fire the `on_connected` event if successfully connected. By default we also send a reset
+    Set :attr:`is_connected` to True if successfully connected. By default we also send a reset
     command defined in :attr:`reset_command`.
+
+    Returns True if successfully connected, else False.
+
+    .. versionadded:: 0.0.1
+    '''
+
+    def disconnect(self, *args):
+        try:
+            self.stop_reader_stream()
+            self._recv_stream.close()
+            self._send_stream.close()
+            self.is_connected = False
+            return
+        except:
+            self._exception_raiser("Anslutningen kunde inte stängas")
+            return
+    '''
+    Calls :class:`BTCommunicator.stop_reader_stream()` to stop listening to incoming responses and,
+    if we are pining, stop that too. Then close input and output IO streams and set
+    :attr:`is_connected` to False.
 
     .. versionadded:: 0.0.1
     '''
@@ -229,7 +250,7 @@ class BTCommunicator(Widget):
             send_string += ' '.join(args)
 
         resends = tries if tries> 0 else self._num_of_resends
-
+        error_message = ''
         for i in range(1, resends):
             try:
                 self.send_stream.write("{}\n".format(send_string))
@@ -237,10 +258,10 @@ class BTCommunicator(Widget):
                 error = False
                 break
             except jnius.JavaException as e:
-                self._error_message = "Det gick inte att skicka kommandot. Felmeddelande: {}".format(e.message)
+                error_message = "Det gick inte att skicka kommandot. Felmeddelande: {}".format(e.message)
                 error = True
             except:
-                self._error_message = "Det gick inte att skicka kommandot. Felmeddelande: {}".format(sys.exc_info()[0])
+                error_message = "Det gick inte att skicka kommandot. Felmeddelande: {}".format(sys.exc_info()[0])
                 error = True
             time.sleep(self._resend_delay)
 
@@ -248,7 +269,8 @@ class BTCommunicator(Widget):
             self._add_command(command)
             self.dispatch('on_command_sent')
         else:
-            self.dispatch('on_disconnected')
+            self.is_connected = False
+            self._exception_raiser(error_message)
         return
     '''
     Send command to the Arduino device. A list of arguments can be set with :attr:`args=[]`. By default
@@ -272,12 +294,11 @@ class BTCommunicator(Widget):
                 try:
                     stream = self._recv_stream.readLine()
                 except self.IOException as e:
-                    self._set__error_message("Det gick inte att ta emot meddelande från styrenheten: {}".format(e.message))
+                    self._exception_raiser("Det gick inte att ta emot meddelande från styrenheten: {}".format(e.message))
                 except jnius.JavaException as e:
-                    self._set__error_message("Det gick inte att ta emot meddelande från styrenheten: {}".format(e.message))
+                    self._exception_raiser("Det gick inte att ta emot meddelande från styrenheten: {}".format(e.message))
                 except:
-                    self._set__error_message("Det gick inte att ta emot meddelande från styrenheten: {}".format(sys.exc_info()[0]))
-
+                    self._exception_raiser("Det gick inte att ta emot meddelande från styrenheten: {}".format(sys.exc_info()[0]))
                 try:
                     start = stream.rindex("<") + 1
                     end = stream.rindex(">", start)
@@ -286,8 +307,8 @@ class BTCommunicator(Widget):
                     pass
 
     @mainthread
-    def _set__error_message(self, message):
-        self._error_message = message
+    def _exception_raiser(self, message):
+        raise BTCommunicatorException(message)
 
     @mainthread
     def _add_response(self, response):
@@ -320,8 +341,12 @@ class BTCommunicator(Widget):
         self._send_stream = send_stream
         return
 
-    def on__error_message(self, *args):
-        self.dispatch('on_error')
+    def on_error_message(self, *args):
+        pass
+
+    def on_is_connected(self, *args):
+        if not self.is_connected:
+            self.dispatch('on_disconnected')
 
     def on_connected(self):
         pass
