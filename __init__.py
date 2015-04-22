@@ -20,15 +20,16 @@ To initialize communication to a BT device called 'HC-06'::
 __version__ = '0.0.1'
 
 import threading
-import jnius
 import sys
 import time
 
+import jnius
 from kivy.app import App
 from kivy.properties import NumericProperty, ListProperty, ObjectProperty, StringProperty, BooleanProperty
-from kivy.clock import mainthread
+from kivy.clock import mainthread, Clock
 from kivy.uix.widget import Widget
 from kivy import platform
+
 
 class BTCommunicatorException(Exception):
     '''Exception for the :class:`BTCommunicator`.
