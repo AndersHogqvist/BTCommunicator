@@ -1,6 +1,6 @@
 #  -*- coding: utf-8 -*-
 '''BTCommunicator
-=======================================
+==============
 
 :class:`BTCommunicator(**kwargs)` handles all the Bluetooth communication with an Arduino device running the SerialCommand
 library.
@@ -199,7 +199,7 @@ class BTCommunicator(Widget):
 
     def start_reader_stream(self, *args):
         self._stop.clear()
-        threading.Thread(target=self.stream_reader).start()
+        threading.Thread(target=self._stream_reader).start()
     '''
     Start listening for incoming responses. The :attr:`_stream_reader` runs in a separate thread and listens for
     responses enclosed in :attr:`start_enclosing` and :attr:`end_enclosing`. If a proper response is recognized it
