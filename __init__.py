@@ -156,26 +156,24 @@ class BTCommunicator(Widget):
 
     def connect(self, *args):
         try:
-            self._get_socket_stream(self._device_name)
+            self._get_socket_stream(self.device_name)
         except AttributeError as e:
             self._exception_raiser("Det gick inte att ansluta till styrenheten. Felmeddelande: {}".format(e.message))
-            return False
+            return
         except jnius.JavaException:
             self._exception_raiser("Det gick inte att ansluta till styrenheten. Är Blåtand aktiverat?")
-            return False
+            return
         except:
             self._exception_raiser("Det gick inte att ansluta till styrenheten. Felmeddelande: {}".format(sys.exc_info()[0]))
-            return False
+            return
         self.is_connected = True
         if self.send_reset:
             self.send(command=self.reset_command)
-        return True
+        return
     '''
     Connects to the device with the name :attr:`device_name`
     Set :attr:`is_connected` to True if successfully connected. By default we also send a reset
     command defined in :attr:`reset_command`.
-
-    Returns True if successfully connected, else False.
 
     .. versionadded:: 0.0.1
     '''
