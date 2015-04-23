@@ -40,10 +40,10 @@ class BTCommunicatorException(Exception):
 class BTCommunicator(Widget):
     '''
     :Events:
-        `on_connected`: ()
-            Dispatched when successfully connected to the BT device.
+        `on__connected`: ()
+            Dispatched when successfully _connected to the BT device.
 
-        `on_disconnected`: ()
+        `on_dis_connected`: ()
             Fired when the connection is lost. By default we will try to send a command 3 times before deciding that
             the connection is lost. To temporarily override this, use :class:`BTCommunicator.send(tries=<value>)`.
 
@@ -67,9 +67,13 @@ class BTCommunicator(Widget):
     .. versionadded:: 0.0.1
     '''
 
-    is_connected = BooleanProperty(False)
+    _connected = BooleanProperty(False)
+    def is_connected(self):
+        return _connected
     '''
-    Is true if we are connected.
+    :attr:`_connected` (internal) is true when we have a running Bluetooth connection.
+
+    Use :class:`BTCommunicator.is_connected()` to check the connection
 
     .. versionadded:: 0.0.1
     '''
@@ -98,7 +102,7 @@ class BTCommunicator(Widget):
     send_reset = BooleanProperty(True)
     reset_command = StringProperty('RESET')
     '''
-    By default we will send a reset command to the Arduino device when successfully connected. How you handle
+    By default we will send a reset command to the Arduino device when successfully _connected. How you handle
     this on the board is up to you. Change this to `False` if you don't want this feature.
 
     :attr:`reset_command`:: Reset command recognized by the Arduino device
@@ -146,8 +150,8 @@ class BTCommunicator(Widget):
 
     def __init__(self, **kwargs):
         super(BTCommunicator, self).__init__(**kwargs)
-        self.register_event_type('on_connected')
-        self.register_event_type('on_disconnected')
+        self.register_event_type('on__connected')
+        self.register_event_type('on_dis_connected')
         self.register_event_type('on_command_sent')
         self.register_event_type('on_response')
         self.register_event_type('on_error')
@@ -174,7 +178,7 @@ class BTCommunicator(Widget):
         self._get_socket_stream(self.device_name)
     '''
     Connects to the device with the name :attr:`device_name`
-    Set :attr:`is_connected` to True if successfully connected. By default we also send a reset
+    Set :attr:`_connected` to True if successfully _connected. By default we also send a reset
     command defined in :attr:`reset_command`.
 
     .. versionadded:: 0.0.1
@@ -185,13 +189,13 @@ class BTCommunicator(Widget):
             self.stop_reader_stream()
             self._recv_stream.close()
             self._send_stream.close()
-            self.is_connected = False
+            self._connected = False
         except:
             raise BTCommunicatorException(self._lang['messages']['disconnect_error'])
     '''
     Calls :class:`BTCommunicator.stop_reader_stream()` to stop listening to incoming responses and,
     if we are pining, stop that too. Then close input and output IO streams and set
-    :attr:`is_connected` to False.
+    :attr:`_connected` to False.
 
     .. versionadded:: 0.0.1
     '''
@@ -268,7 +272,7 @@ class BTCommunicator(Widget):
             self._add_command(command)
             self.dispatch('on_command_sent')
         else:
-            self.is_connected = False
+            self._connected = False
             raise BTCommunicatorException(error_message)
         return
     '''
@@ -289,7 +293,7 @@ class BTCommunicator(Widget):
             if self._stop.is_set():
                 jnius.detach()
                 return
-            if self.is_connected:
+            if self._connected:
                 try:
                     stream = self._recv_stream.readLine()
                 except self.IOException as e:
@@ -331,11 +335,11 @@ class BTCommunicator(Widget):
                     reader = self.InputStreamReader(self.socket.getInputStream(), 'US-ASCII')
                     recv_stream = self.BufferedReader(reader)
                     send_stream = self.socket.getOutputStream()
-                    self.socket.connect()
-                    self._recv_stream = recv_stream
-                    self._send_stream = send_stream
                     break
             if self.socket:
+                self.socket.connect()
+                self._recv_stream = recv_stream
+                self._send_stream = send_stream
                 return
             else:
                 raise BTCommunicatorException("{} {}".format(self._lang['messages']['device_name_error'], name))
@@ -345,14 +349,14 @@ class BTCommunicator(Widget):
     def on_error_message(self, *args):
         pass
 
-    def on_is_connected(self, *args):
-        if not self.is_connected:
-            self.dispatch('on_disconnected')
+    def on__connected(self, *args):
+        if not self._connected:
+            self.dispatch('on_dis_connected')
 
-    def on_connected(self):
+    def on__connected(self):
         pass
 
-    def on_disconnected(self):
+    def on_dis_connected(self):
         pass
 
     def on_command_sent(self):
