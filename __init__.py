@@ -22,10 +22,11 @@ __version__ = '0.0.1'
 import threading
 import sys
 import time
-
 import jnius
+from os.path import dirname, join
+import json
 from kivy.app import App
-from kivy.properties import NumericProperty, ListProperty, ObjectProperty, StringProperty, BooleanProperty
+from kivy.properties import NumericProperty, ListProperty, ObjectProperty, StringProperty, BooleanProperty, DictProperty
 from kivy.clock import mainthread, Clock
 from kivy.uix.widget import Widget
 from kivy import platform
@@ -56,6 +57,14 @@ class BTCommunicator(Widget):
 
         `on_unknown`: ()
             Fired if the response == :attr:`unknown`. The command will be removed from :attr:`command_buffer`.
+    '''
+
+    language = StringProperty('se_SV')
+    '''
+    The language in which the exception messages will be shown. :clas:`BTCommunicator` will
+    look for this file in the sub-directory /lang.
+
+    .. versionadded:: 0.0.1
     '''
 
     is_connected = BooleanProperty(False)
@@ -132,7 +141,8 @@ class BTCommunicator(Widget):
     _recv_stream = ObjectProperty()
     _send_stream = ObjectProperty()
     _stop = threading.Event()
-
+    _lang = DictProperty({})
+    BTCommunicatorException = BTCommunicatorException
 
     def __init__(self, **kwargs):
         super(BTCommunicator, self).__init__(**kwargs)
@@ -143,6 +153,12 @@ class BTCommunicator(Widget):
         self.register_event_type('on_error')
         self.register_event_type('on_unknown')
         App.get_running_app().bind(on_stop=self.stop_reader_stream)
+        curdir = dirname(__file__)
+        try:
+            with open(join(curdir, 'lang', '{}.json'.format(self.language))) as lang_file:
+                self._lang = json.load(lang_file)
+        except Exception as e:
+            raise BTCommunicatorException("Couldn't load {}/lang/{}.json\nError: {}".format(curdir, self.language, e.message))
 
         if platform == 'android':
             self.BluetoothAdapter = jnius.autoclass('android.bluetooth.BluetoothAdapter')
@@ -155,21 +171,7 @@ class BTCommunicator(Widget):
         return
 
     def connect(self, *args):
-        try:
-            self._get_socket_stream(self.device_name)
-        except AttributeError as e:
-            self._exception_raiser("Det gick inte att ansluta till styrenheten. Felmeddelande: {}".format(e.message))
-            return
-        except jnius.JavaException:
-            self._exception_raiser("Det gick inte att ansluta till styrenheten. Är Blåtand aktiverat?")
-            return
-        except:
-            self._exception_raiser("Det gick inte att ansluta till styrenheten. Felmeddelande: {}".format(sys.exc_info()[0]))
-            return
-        self.is_connected = True
-        if self.send_reset:
-            self.send(command=self.reset_command)
-        return
+        self._get_socket_stream(self.device_name)
     '''
     Connects to the device with the name :attr:`device_name`
     Set :attr:`is_connected` to True if successfully connected. By default we also send a reset
@@ -184,10 +186,8 @@ class BTCommunicator(Widget):
             self._recv_stream.close()
             self._send_stream.close()
             self.is_connected = False
-            return
         except:
-            self._exception_raiser("Anslutningen kunde inte stängas")
-            return
+            raise BTCommunicatorException(self._lang['messages']['disconnect_error'])
     '''
     Calls :class:`BTCommunicator.stop_reader_stream()` to stop listening to incoming responses and,
     if we are pining, stop that too. Then close input and output IO streams and set
@@ -257,10 +257,10 @@ class BTCommunicator(Widget):
                 error = False
                 break
             except jnius.JavaException as e:
-                error_message = "Det gick inte att skicka kommandot. Felmeddelande: {}".format(e.message)
+                error_message = "{} {}".format(self._lang['messages']['send_error_JavaException'], e.message)
                 error = True
             except:
-                error_message = "Det gick inte att skicka kommandot. Felmeddelande: {}".format(sys.exc_info()[0])
+                error_message = "{} {}".format(self._lang['messages']['send_error_Unknown'], sys.exc_info()[0])
                 error = True
             time.sleep(self._resend_delay)
 
@@ -269,7 +269,7 @@ class BTCommunicator(Widget):
             self.dispatch('on_command_sent')
         else:
             self.is_connected = False
-            self._exception_raiser(error_message)
+            raise BTCommunicatorException(error_message)
         return
     '''
     Send command to the Arduino device. A list of arguments can be set with :attr:`args=[]`. By default
@@ -289,25 +289,21 @@ class BTCommunicator(Widget):
             if self._stop.is_set():
                 jnius.detach()
                 return
-            if self._recv_stream.ready():
+            if self.is_connected:
                 try:
                     stream = self._recv_stream.readLine()
                 except self.IOException as e:
-                    self._exception_raiser("Det gick inte att ta emot meddelande från styrenheten: {}".format(e.message))
+                    raise BTCommunicatorException("{} {}".format(self._lang['messages']['receive_error_IOException'], e.message))
                 except jnius.JavaException as e:
-                    self._exception_raiser("Det gick inte att ta emot meddelande från styrenheten: {}".format(e.message))
+                    raise BTCommunicatorException("{} {}".format(self._lang['messages']['receive_error_JavaException'], e.message))
                 except:
-                    self._exception_raiser("Det gick inte att ta emot meddelande från styrenheten: {}".format(sys.exc_info()[0]))
+                    raise BTCommunicatorException("{} {}".format(self._lang['messages']['receive_error_Unknown'], sys.exc_info()[0]))
                 try:
                     start = stream.rindex("<") + 1
                     end = stream.rindex(">", start)
                     self._add_response(stream[start:end])
                 except ValueError:
                     pass
-
-    @mainthread
-    def _exception_raiser(self, message):
-        raise BTCommunicatorException(message)
 
     @mainthread
     def _add_response(self, response):
@@ -326,19 +322,25 @@ class BTCommunicator(Widget):
         return
 
     def _get_socket_stream(self, name):
-        paired_devices = self.BluetoothAdapter.getDefaultAdapter().getBondedDevices().toArray()
-        self.socket = None
-        for device in paired_devices:
-            if device.getName() == name:
-                self.socket = device.createRfcommSocketToServiceRecord(self.UUID.fromString("00001101-0000-1000-8000-00805F9B34FB"))
-                reader = self.InputStreamReader(self.socket.getInputStream(), 'US-ASCII')
-                recv_stream = self.BufferedReader(reader)
-                send_stream = self.socket.getOutputStream()
-                break
-        self.socket.connect()
-        self._recv_stream = recv_stream
-        self._send_stream = send_stream
-        return
+        if hasattr(self, 'BluetoothAdapter'):
+            paired_devices = self.BluetoothAdapter.getDefaultAdapter().getBondedDevices().toArray()
+            self.socket = None
+            for device in paired_devices:
+                if device.getName() == name:
+                    self.socket = device.createRfcommSocketToServiceRecord(self.UUID.fromString("00001101-0000-1000-8000-00805F9B34FB"))
+                    reader = self.InputStreamReader(self.socket.getInputStream(), 'US-ASCII')
+                    recv_stream = self.BufferedReader(reader)
+                    send_stream = self.socket.getOutputStream()
+                    self.socket.connect()
+                    self._recv_stream = recv_stream
+                    self._send_stream = send_stream
+                    break
+            if self.socket:
+                return
+            else:
+                raise BTCommunicatorException("{} {}".format(self._lang['messages']['device_name_error'], name))
+        else:
+            raise BTCommunicatorException(self._lang['messages']['not_android'])
 
     def on_error_message(self, *args):
         pass

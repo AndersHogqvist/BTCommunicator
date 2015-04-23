@@ -1,0 +1,12 @@
+{
+  "messages": {
+    "device_name_error": "Could not find a device called.",
+    "send_error_JavaException": "Unable to send command.\nJavaException:",
+    "send_error_Unknown": "Unable to send command.\nUnknown error:",
+    "receive_error_IOException": "Unable to receive a response:\nIOException:",
+    "receive_error_JavaException": "Unable to receive a response:\nJavaException:",
+    "receive_error_Unknown": "Unable to receive a response:\nUnknown error:",
+    "disconnect_error": "Unable to close the Bluetooth connection.",
+    "not_android": "Can only run on Android platform."
+  }
+}

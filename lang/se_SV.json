@@ -1,0 +1,12 @@
+{
+  "messages": {
+    "device_name_error": "Hittade ingen enhet med namnet.",
+    "send_error_JavaException": "Det gick inte att skicka kommandot.\nJavaException:",
+    "send_error_Unknown": "Det gick inte att skicka kommandot.\nOkänt fel:",
+    "receive_error_IOException": "Det gick inte att ta emot ett meddelande:\nIOException:",
+    "receive_error_JavaException": "Det gick inte att ta emot ett meddelande:\nJavaException:",
+    "receive_error_Unknown": "Det gick inte att ta emot ett meddelande:\nOkänt fel:",
+    "disconnect_error": "Bluetooth-anslutningen kunde inte stängas.",
+    "not_android": "Kan endast köras på Android-enheter."
+  }
+}
